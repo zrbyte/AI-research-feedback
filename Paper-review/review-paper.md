@@ -24,8 +24,19 @@ If a file path was provided, use it as the main LaTeX file. Otherwise, auto-dete
 2. Identify the **main document**: the .tex file that contains `\documentclass` or `\begin{document}`. Read each candidate briefly if needed.
 3. Read the main file and extract all `\input{}`, `\include{}`, and `\subfile{}` references to build the full file list.
 4. Read all component .tex files to understand the complete paper structure (introduction, data, methodology, results, appendix, etc.).
-5. Use Glob to list figure files: patterns `Figures/**/*.pdf`, `figures/**/*.pdf`, `Figures/**/*.png`, `figures/**/*.png`, `Figures/**/*.eps`, `figures/**/*.eps`.
-6. Use Glob to list table files: patterns `Tables/**/*.tex`, `tables/**/*.tex`.
+5. Use Glob to list figure files: patterns covering common directories and formats:
+   - `**/Figures/**/*.pdf`, `**/figures/**/*.pdf`, `**/Figure/**/*.pdf`, `**/figure/**/*.pdf`
+   - `**/Figures/**/*.png`, `**/figures/**/*.png`, `**/Figure/**/*.png`, `**/figure/**/*.png`
+   - `**/Figures/**/*.eps`, `**/figures/**/*.eps`, `**/Figure/**/*.eps`, `**/figure/**/*.eps`
+   - `**/Figures/**/*.jpg`, `**/figures/**/*.jpg`, `**/Figure/**/*.jpg`, `**/figure/**/*.jpg`
+   - `**/Figures/**/*.jpeg`, `**/figures/**/*.jpeg`, `**/Figure/**/*.jpeg`, `**/figure/**/*.jpeg`
+   - `**/Figures/**/*.svg`, `**/figures/**/*.svg`, `**/Figure/**/*.svg`, `**/figure/**/*.svg`
+   - Root-level: `*.pdf`, `*.png`, `*.eps`, `*.jpg`, `*.jpeg`, `*.svg`
+   - Exclude: `**/_minted-*/**`, `**/build/**`, `**/output/**`, `**/.git/**`
+6. Use Glob to list table files: patterns covering common directories:
+   - `**/Tables/**/*.tex`, `**/tables/**/*.tex`, `**/Table/**/*.tex`, `**/table/**/*.tex`
+   - Root-level: `*table*.tex`, `*Table*.tex`
+   - Exclude: `**/_minted-*/**`, `**/build/**`, `**/output/**`, `**/.git/**`
 
 Record:
 - Full path of each .tex file and its role in the paper
