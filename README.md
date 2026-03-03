@@ -1,7 +1,6 @@
 # Using AI to get feedback on your research
 
-A collection of [Claude Code](https://claude.ai/code) skills for academic economics paper review. This tool was developed by [Claes Bäckman](https://claesbackman.com). Claes also [has a Substack](https://substack.com/@claesbackman) that occasionally covers AI and research. 
-
+A collection of [Claude Code](https://claude.ai/code) skills for academic economics paper review. This tool was developed by [Claes Bäckman](https://claesbackman.com). 
 ## Skills
 
 ### `review-paper` — Pre-Submission Referee Report
