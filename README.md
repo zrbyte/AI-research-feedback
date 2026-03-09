@@ -47,7 +47,7 @@ The consolidated report is saved to `PRE_SUBMISSION_REVIEW_[YYYY-MM-DD].md` in t
 
 The agents are calibrated for condensed matter experiment and theory. Highlights:
 
-- **Agent 3** checks for tip-artifact vs intrinsic feature attribution in STM/STS, topological invariant computation (not just band gap closure arguments), Raman peak assignment without polarimetry, "intrinsic" surface property claims on potentially contaminated vdW materials, and DFT functional sensitivity.
+- **Agent 3** asks whether every statement in the paper is justified by the evidence actually presented, and flags anywhere the authors have overreached. Examples include: checks for tip-artifact vs intrinsic feature attribution in STM/STS, topological invariant computation (not just band gap closure arguments), Raman peak assignment, "intrinsic" surface property claims on potentially contaminated vdW materials, and DFT functional sensitivity.
 - **Agent 4** verifies completeness of DFT parameters (code, functional, pseudopotential, k-mesh, cutoff, vdW correction, SOC, convergence criteria), tight-binding parameter definitions, and MD force field and ensemble settings.
 - **Agent 5** has separate checklists for STM topography images (scale bar, T, V_b, I_t, processing), STS/dI/dV spectra (stabilisation setpoint, lock-in parameters, raw vs smoothed), Raman figures (excitation wavelength, polarisation, integration time, normalisation), and band structure plots (Fermi level, k-path labels, spin resolution).
 - **Agent 6** applies a three-tier referee persona: Tier 1 asks whether the result changes how the community thinks about the material; Tier 2 demands quantitative theory-experiment consistency and complete methods reporting; Tier 3 evaluates novelty against existing literature.
