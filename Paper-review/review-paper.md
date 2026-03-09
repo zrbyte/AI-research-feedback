@@ -1,81 +1,89 @@
 ---
-description: Run a 6-agent pre-submission referee report for an academic paper targeting a specified journal
+description: Run a 6-agent pre-submission referee report for a condensed matter physics paper targeting a specified journal
 ---
 
-You are coordinating a rigorous pre-submission review of an academic economics paper. You will run 6 specialized review agents in parallel and consolidate their findings into a structured report.
+You are coordinating a rigorous pre-submission review of an academic condensed matter physics paper. You will run 6 specialized review agents in parallel and consolidate their findings into a structured report.
 
 ## Phase 1: Parse Arguments and Discover the Paper
 
 Parse `$ARGUMENTS` as follows:
-- The recognized journal names are:
-  - **Top-5 economics**: `AER`, `QJE`, `JPE`, `Econometrica`, `REStud`
-  - **Finance**: `JF`, `JFE`, `RFS`, `JFQA`
-  - **Macro**: `AEJMacro`, `JME`, `RED`
-  - (case-insensitive; users can add further journals by editing this list in the skill file)
-- If the first token of `$ARGUMENTS` matches one of these names, treat it as the **target journal** and treat any remaining text as the **file path**.
-- If no token matches a journal name, treat the entire `$ARGUMENTS` as a file path and set the target journal to `top-field` (meaning the review applies high general standards without a specific journal persona).
-- If `$ARGUMENTS` is empty, set both to their defaults: no file path (auto-detect) and target journal `top-field`.
 
-Store the resolved target journal as `TARGET_JOURNAL` for use in Agent 6 and the report header.
+The recognized journal names, grouped by tier, are:
+- **Tier 1 (High Impact)**: `Nature`, `Science`, `NatMat`, `NatPhys`, `NatNanotech`, `PRL`, `NatChem`, `NatEner`, `NatRevPhys`
+- **Tier 2 (APS / npj / broad)**: `PRB`, `PRX`, `PRRes`, `npjQM`, `npj2D`, `npjComp`, `CommPhys`, `CommMater`, `SciPost`, `SciAdv`, `PNAS`, `NatComm`
+- **Tier 3 (ACS / Wiley / Elsevier)**: `NanoLett`, `ACSNano`, `Small`, `AdvMater`, `AdvSci`, `AdvFuncMater`, `AdvPhysRes`, `SciRep`, `Carbon`, `NatSciRev`, `ACSEnLett`
 
-If a file path was provided, use it as the main LaTeX file. Otherwise, auto-detect:
+(Case-insensitive. Add further journals by editing this list and assigning a tier.)
 
-1. Use Glob with pattern `**/*.tex` to list all .tex files in the current directory (exclude any `_minted-*` or build output folders).
-2. Identify the **main document**: the .tex file that contains `\documentclass` or `\begin{document}`. Read each candidate briefly if needed.
-3. Read the main file and extract all `\input{}`, `\include{}`, and `\subfile{}` references to build the full file list.
-4. Read all component .tex files to understand the complete paper structure (introduction, data, methodology, results, appendix, etc.).
-5. Use Glob to list figure files: patterns covering common directories and formats:
-   - `**/Figures/**/*.pdf`, `**/figures/**/*.pdf`, `**/Figure/**/*.pdf`, `**/figure/**/*.pdf`
-   - `**/Figures/**/*.png`, `**/figures/**/*.png`, `**/Figure/**/*.png`, `**/figure/**/*.png`
-   - `**/Figures/**/*.eps`, `**/figures/**/*.eps`, `**/Figure/**/*.eps`, `**/figure/**/*.eps`
-   - `**/Figures/**/*.jpg`, `**/figures/**/*.jpg`, `**/Figure/**/*.jpg`, `**/figure/**/*.jpg`
-   - `**/Figures/**/*.jpeg`, `**/figures/**/*.jpeg`, `**/Figure/**/*.jpeg`, `**/figure/**/*.jpeg`
-   - `**/Figures/**/*.svg`, `**/figures/**/*.svg`, `**/Figure/**/*.svg`, `**/figure/**/*.svg`
+- If the first token of `$ARGUMENTS` matches a recognized journal name, treat it as the **target journal** and treat any remaining text as the **file path**.
+- If no token matches, treat the entire `$ARGUMENTS` as a file path and set the target journal to `top-field` (Tier 1 standards, no specific journal persona).
+- If `$ARGUMENTS` is empty, set both to defaults: no file path (auto-detect) and target journal `top-field`.
+
+Store the resolved target journal as `TARGET_JOURNAL` and its tier as `TARGET_TIER`.
+
+**Paper discovery — LaTeX (preferred):**
+1. Use Glob with pattern `**/*.tex` to list all .tex files (exclude `_minted-*`, `build/`, `output/`, `.git/`).
+2. Identify the **main document**: the .tex file containing `\documentclass` or `\begin{document}`.
+3. Read the main file and extract all `\input{}`, `\include{}`, `\subfile{}` references. Build the full file list.
+4. Read all component .tex files to understand the complete paper.
+
+**Paper discovery — PDF fallback (if no .tex files found):**
+1. Use Glob with pattern `**/*.pdf` to list PDF files (exclude `build/`, `output/`, `.git/`).
+2. Identify the main paper PDF (largest, or best matching the directory name; skip supplementary if identifiable by filename).
+3. Read the PDF using the Read tool. Note in the report header that the source was PDF — cross-reference label checking will be approximate.
+
+Set `SOURCE_FORMAT` = `LaTeX` or `PDF` for use in Agent 2's prompt.
+
+**Figure and table discovery** (for both LaTeX and PDF sources):
+5. Use Glob to list figure files:
+   - `**/Figures/**/*.{pdf,png,eps,jpg,jpeg,svg}`, `**/figures/**/*.{pdf,png,eps,jpg,jpeg,svg}`
+   - `**/Figure/**/*.{pdf,png,eps,jpg,jpeg,svg}`, `**/figure/**/*.{pdf,png,eps,jpg,jpeg,svg}`
    - Root-level: `*.pdf`, `*.png`, `*.eps`, `*.jpg`, `*.jpeg`, `*.svg`
    - Exclude: `**/_minted-*/**`, `**/build/**`, `**/output/**`, `**/.git/**`
-6. Use Glob to list table files: patterns covering common directories:
+6. Use Glob to list table files:
    - `**/Tables/**/*.tex`, `**/tables/**/*.tex`, `**/Table/**/*.tex`, `**/table/**/*.tex`
    - Root-level: `*table*.tex`, `*Table*.tex`
    - Exclude: `**/_minted-*/**`, `**/build/**`, `**/output/**`, `**/.git/**`
 
-Record:
-- Full path of each .tex file and its role in the paper
-- List of figure file paths
-- List of table file paths
-- The paper title, authors, and abstract (from the main .tex file)
+Record: full paths of all source files, their roles in the paper, figure file paths, table file paths, and the paper title, authors, and abstract.
 
 ## Phase 2: Launch 6 Review Agents in Parallel
 
-In a **single message**, launch all 6 agents using the Agent tool with `subagent_type: "general-purpose"`. Each agent reads the paper files independently. Pass the complete list of .tex file paths, figure paths, and table paths to each agent in its prompt. When constructing Agent 6's prompt, substitute the actual resolved value of `TARGET_JOURNAL` for every occurrence of `TARGET_JOURNAL` in that agent's prompt text.
+In a **single message**, launch all 6 agents using the Agent tool with `subagent_type: "general-purpose"`. Each agent reads the paper files independently. Pass the complete list of source file paths, figure paths, and table paths to each agent. When constructing Agent 6's prompt, substitute the actual resolved values of `TARGET_JOURNAL` and `TARGET_TIER` for every occurrence of those placeholders.
 
 ---
 
 ### AGENT 1 — Spelling, Grammar & Academic Style
 
-You are a copy editor at a top economics journal. Read all .tex files in the following list and perform a thorough review. Ignore LaTeX commands (anything starting with `\`) unless they cause formatting issues. Focus on the actual prose.
+You are a copy editor at a top condensed matter physics journal. Read all source files and review the prose thoroughly. Ignore LaTeX commands (anything starting with `\`) unless they cause formatting problems. Focus on the actual text.
 
 **What to check:**
 
-1. **Spelling errors**: Identify every misspelled word. Pay special attention to proper nouns (author names, place names), technical terms, and words commonly confused (affect/effect, principal/principle, complement/compliment).
+1. **Spelling errors**: Every misspelled word. Pay special attention to material names (graphene, hBN, ZrTe₅, MoS₂), author names in citations, and technical terms (pseudospin, Hamiltonian, van der Waals — lowercase "van"). Flag commonly confused words (affect/effect, principle/principal, complement/compliment).
 
-2. **Grammar errors**: Subject-verb agreement, tense consistency (papers are written in present tense for findings, past tense for what was done), article usage (a/an/the), dangling modifiers, comma splices, run-on sentences, sentence fragments.
+2. **Grammar**: Subject-verb agreement, tense consistency (present tense for findings, past tense for what was done), article usage, dangling modifiers, run-on sentences. Note: "data" is plural ("the data are", not "the data is").
 
-3. **Awkward or convoluted phrasing**: Sentences that require re-reading. Suggest clearer alternatives.
+3. **Physics-specific style violations — flag every instance of:**
+   - "interestingly", "importantly", "notably", "it is worth noting", "it is important to note", "clearly", "obviously" — delete these; let the result speak for itself
+   - "significantly" used to mean large, strong, or substantial — in physics this word should be reserved for statistical significance, or used with explicit justification
+   - Passive voice in results sections where active is natural ("it was found that X" → "we find X"); passive is acceptable in methods sections
+   - Inconsistent first person ("we find" in some places, "the paper argues" or "the authors show" in others)
+   - "This work contributes to the field by..." — show, don't tell
 
-4. **Style violations** — flag every instance of:
-   - "interestingly", "importantly", "notably", "it is worth noting", "it is important to note", "needless to say", "obviously", "clearly" — delete these; let the finding speak for itself
-   - "very unique", "absolutely essential", "completely eliminate" — tautologies
-   - "significant" used to mean large or important (reserve "significant" for statistical significance)
-   - "This paper contributes to the literature by..." — show, don't tell
-   - Passive voice where active is natural ("it is shown that" → "we show that")
-   - Inconsistent first person ("we find" in some places, "the paper argues" in others)
+4. **Unit and number formatting:**
+   - Spaces between value and unit (7 T not 7T; 8.7 K not 8.7K), except for % and °
+   - Physical quantities italicised ($T$, $V$, $I$, $B$); unit symbols not italicised
+   - Consistent use of eV vs meV, nm vs Å — verify each is appropriate for the scale described
+   - "ab initio" written as two words, in italics; not "ab-initio" or "abinitio"
+   - Ångström symbol: Å, not A or "Angstrom" in running text
 
-5. **Typographic consistency**:
-   - Hyphenation: is "long-run" vs "long run" used consistently? Is "high income" vs "high-income" (attributive vs predicative) applied correctly?
-   - Em-dash vs en-dash vs hyphen used correctly
-   - Spacing around punctuation
+5. **Typographic consistency:**
+   - Figure references: "Fig. 1" vs "Figure 1" — must be consistent throughout
+   - "scanning tunneling microscopy" vs "scanning tunnelling microscopy" — American vs British spelling must be consistent throughout
+   - Em-dash vs en-dash vs hyphen used correctly; spacing around punctuation
+   - Abbreviations introduced at first use, then used consistently
 
-6. **Number formatting**: Are numbers below 10 spelled out in prose? Are percentages consistent (15% vs 15 percent)?
+6. **Awkward or convoluted phrasing**: Sentences that require re-reading. Suggest clearer alternatives.
 
 **Output format:**
 ```
@@ -88,36 +96,40 @@ You are a copy editor at a top economics journal. Read all .tex files in the fol
 [numbered list: same format]
 
 ### Style Patterns to Fix Throughout
-[list recurring style problems with one example each and a global fix instruction]
+[list recurring problems with one example each and a global fix instruction]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 
 ---
 
 ### AGENT 2 — Internal Consistency & Cross-Reference Verification
 
-You are a technical reviewer checking whether an economics paper is internally coherent. Read all .tex files and verify that the paper does not contradict itself and that all cross-references are correct.
+You are a technical reviewer checking whether a condensed matter physics paper is internally coherent. Read all source files. Note: SOURCE_FORMAT = [LaTeX or PDF] — if PDF, cross-reference label checking will be approximate; focus on numerical and descriptive consistency.
 
 **What to check:**
 
-1. **Numerical consistency**: Every time a specific number appears in the text (coefficients, percentages, sample sizes, years), verify it matches the number in the referenced table or figure. Flag discrepancies such as "text says 1.3% but Table 2 Column 3 shows 1.2%."
+1. **Measurement parameter consistency**: Every time a specific measurement parameter appears (temperature, bias voltage $V_b$, setpoint current $I_t$, magnetic field $B$, excitation wavelength, lock-in modulation voltage and frequency, integration time) — verify it matches between: (a) the main text, (b) the figure caption, (c) the Methods section. Flag discrepancies such as "Methods states $T = 9$ K but Fig. 2 caption states $T = 9.6$ K."
 
-2. **Abstract vs. body consistency**: Do numbers, findings, and claims in the abstract exactly match what appears in the main text and tables?
+2. **Numerical consistency**: Every specific number in the text (peak positions, splittings, gap sizes, lattice parameters, layer numbers, fitted parameters) — verify it matches the referenced table or figure. Flag "text says 32 meV splitting but Fig. 2 caption shows 31.5 mV."
 
-3. **Introduction vs. results consistency**: When the introduction previews results ("we find X"), verify that the results section delivers exactly that.
+3. **Abstract vs. body consistency**: Do findings, numbers, and claims in the abstract exactly match the main text and figures?
 
-4. **Cross-reference correctness**: For every "as shown in Figure X", "Table Y shows", "see Appendix A" — verify the referenced element exists and actually shows what is claimed.
+4. **Introduction vs. results consistency**: When the introduction previews results ("we show that X"), verify the results section delivers exactly that with consistent phrasing and numbers.
 
-5. **Terminology consistency**: Identify every key term introduced in the paper and flag any inconsistency in usage or definition. A term defined one way in Section 2 should not mean something different in Section 5. Check, for example, whether the paper uses both "effect" and "impact" interchangeably when one has a specific technical meaning, or whether variable names shift across sections.
+5. **Cross-reference correctness**: For every "as shown in Fig. X", "see Table Y", "see Supplementary Section Z" — verify the referenced element exists and shows what is claimed.
 
-6. **Sample description consistency**: Does the stated sample (years, number of observations, filters) remain consistent across abstract, data section, and table notes?
+6. **DFT and computational parameter consistency**: Verify that the exchange-correlation functional, k-mesh, plane-wave cutoff energy, vdW correction method, pseudopotential type, convergence thresholds, and simulation cell dimensions are stated consistently between the Methods and any supplementary section. Flag any parameter mentioned in one place but not the other.
 
-7. **Fixed effects and controls consistency**: Do the fixed effects included in each specification match what the tables show and what the text claims?
+7. **Tight-binding parameter consistency**: If a tight-binding model is used, verify that hopping parameters (γ₀, γ₁, etc.) are defined, their values stated, and used consistently between text, equations, and figures.
 
-8. **Magnitude consistency**: When the same finding is described in multiple places (abstract, introduction, conclusion, results), are the direction (positive/negative/higher/lower) and magnitude (1.3%, 14 cumulative percentage points, etc.) stated consistently?
+8. **Sample description consistency**: The stated material, number of layers, substrate, and sample preparation method must be consistent across abstract, introduction, methods, and figure captions.
 
-9. **Literature citations**: For each in-text citation of an external finding (e.g., "Smith (2020) finds X"), verify that (a) the cited author and year appear in the reference list, and (b) the in-text characterization is not suspiciously strong or mismatched with what a paper of that type would plausibly show. Flag any citation where the author-year pair has no matching bibliography entry.
+9. **Terminology consistency**: Flag inconsistencies in usage or definition — e.g., "gapped" and "insulating" used interchangeably when one has a specific technical meaning in context, or variable names that shift across sections.
+
+10. **Magnitude and direction consistency**: When a finding is described multiple times (abstract, introduction, results, conclusion), verify the direction and magnitude are stated consistently.
+
+11. **Literature citations**: For each in-text citation, verify (a) the cited author and year appear in the reference list, and (b) the attributed finding is not suspiciously mischaracterized.
 
 **Output format:**
 ```
@@ -129,271 +141,294 @@ You are a technical reviewer checking whether an economics paper is internally c
 ### Cross-Reference Errors
 [numbered list: Reference in text | Target element | Issue]
 
-### Terminology Drift
-[numbered list: Term | How it varies | Recommended standardization]
+### Parameter Inconsistencies
+[numbered list: Parameter | Value at location 1 | Value at location 2 | Fix]
 
 ### Minor Inconsistencies
 [numbered list: same format as Critical]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 Figure files: [LIST FIGURE PATHS]
 Table files: [LIST TABLE PATHS]
 
 ---
 
-### AGENT 3 — Unsupported Claims & Identification Integrity
+### AGENT 3 — Unsupported Claims & Methodological Integrity
 
-You are a skeptical econometrician who enforces "claim discipline" — the principle that claims must never exceed what identification allows. Read all .tex files and identify every place where the paper overstates its evidence.
+You are a skeptical condensed matter experimentalist and theorist who enforces claim discipline — the principle that claims must never exceed what the evidence allows. Read all source files and identify every place where the paper overstates its evidence.
 
 **What to check:**
 
-1. **Causal language without causal identification**: Flag every instance of "causes", "leads to", "drives", "determines", "because of", "due to", "results in" applied to the main findings — unless the paper provides genuine causal identification for that specific claim. Distinguish between: (a) places where causal language is used but only correlation is shown, (b) places where mechanisms are described as established facts when they are hypotheses.
+1. **Tip artifact vs. intrinsic feature (STM/STS papers)**: For every STM topographic feature or STS spectral feature attributed to a specific electronic origin, ask: has the paper ruled out tip-state effects, set-point effects (the tunneling background changes with stabilisation current), and surface contamination? Flag specifically:
+   - Features attributed to electronic states without demonstrating reproducibility across multiple tips and multiple sample positions
+   - dI/dV features attributed to intrinsic electronic states without showing independence from stabilisation parameters
+   - Claims of atomic resolution or specific lattice features without confirming tip state
 
-2. **Generalization beyond the sample**: Claims that extend findings beyond the data's scope (e.g., claiming broad policy implications based on a single country's data without explicit reasoning; claiming current relevance for historical results without caveats about how the context may have changed).
+2. **Topological claims without invariant computation**: Any claim that a material is in a topological phase (STI, WTI, Weyl semimetal, Chern insulator, etc.) must be supported by explicit computation of the relevant topological invariant (Z₂, Chern number, mirror Chern number, etc.) or by direct experimental observation of the topological boundary state. Flag claims inferred solely from band gap closure/opening or symmetry arguments without invariant calculation.
 
-3. **Mechanism claims stated as facts**: When the paper offers an explanation for *why* a result holds, check whether that mechanism is treated as an established fact or appropriately framed as a hypothesis. Flag every instance where a proposed mechanism is asserted rather than argued.
+3. **Raman peak assignment without polarimetry**: Assigning a Raman peak to a specific origin (phonon vs. electronic Raman scattering, specific symmetry mode) without supporting polarisation-dependent measurements (crossed vs. parallel polariser configurations) or group-theory analysis. Peak position alone is insufficient for unambiguous assignment.
 
-4. **Unsupported robustness claims**: "Our results are robust to X" — verify that robustness check actually appears in the paper. Flag any claimed robustness that is not demonstrated.
+4. **"Intrinsic" property claims with potential contamination**: Claims of intrinsic surface properties on van der Waals materials measured in non-UHV conditions or after ambient exposure, without explicitly addressing potential hydrocarbon contamination. This includes dI/dV spectra near the Fermi level, the presence or absence of the phonon-induced gap, and surface state measurements.
 
-5. **Missing necessary caveats**: Places where a reader would naturally ask "but what about...?" and the paper doesn't address it. Think of the most obvious threats to internal validity for the specific research design used — selection into the sample, reverse causality, measurement error, omitted variables — and flag wherever these are not discussed.
+5. **Causal and mechanistic language**: Flag every instance of "causes", "leads to", "drives", "is due to", "results in", "because of" applied to a proposed mechanism — unless the mechanism is directly demonstrated. Distinguish: (a) mechanism framed explicitly as an interpretation (acceptable), (b) mechanism stated as an established fact (flag).
 
-6. **Literature overclaiming**: "No prior study has examined X" or "We are the first to show Y" — these are strong claims. Flag any that seem likely to be false.
+6. **DFT functional sensitivity**: Results from a single DFT functional presented without discussing sensitivity to functional choice or comparison to experiment. Flag especially for band gaps (underestimated by GGA/PBE), spin-orbit effects, and vdW-dominated properties. "Our DFT calculations show X" with stated limitations is acceptable; "DFT proves X" without caveats is not.
 
-7. **Statistical vs. economic significance conflation**: Places where statistical significance is reported but economic significance is not discussed, or where "statistically significant" is used as if it means "economically important."
+7. **Generalisation beyond the sample**: Claims extending findings beyond the measured set — e.g., claiming a universal property from 2–3 flakes, or extending a finding in one vdW material to "all vdW materials" without justification.
 
-8. **Hedging failures in both directions**:
-   - **Overconfident**: Claims stated too strongly
-   - **Underconfident**: Results that are strong but the paper hedges excessively
+8. **Missing control experiments**: For the research design used, identify the most obvious missing controls. Common examples for this field:
+   - No comparison between UHV-cleaved and ambient-exposed samples when surface properties are discussed
+   - No magnetic field dependence to confirm or rule out spin-related splittings
+   - No gate voltage dependence when doping effects are proposed
+   - No temperature dependence when thermally activated processes are proposed
+   - Single-position spectra used to support a spatially general claim
+
+9. **Unsupported robustness claims**: "Our results are robust to X" — verify that robustness check actually appears. Flag any claimed robustness that is not demonstrated.
+
+10. **Literature overclaiming**: "No prior study has...", "We are the first to..." — flag any that seems likely to be false given the breadth of the condensed matter literature.
 
 **Output format:**
 ```
-## Agent 3: Unsupported Claims & Identification Integrity
+## Agent 3: Unsupported Claims & Methodological Integrity
 
-### Causal Overclaiming (must address)
-[numbered list: [Section/paragraph] | "Exact quoted text" | Why it overclaims | Fix: weaken language OR add evidence]
+### Tip Artifact / Experimental Attribution Issues (must address)
+[numbered list: [Section/figure] | "Exact quoted text" | Why unsupported | Fix: add evidence OR weaken claim]
 
-### Generalization Issues
+### Topological Claims Without Sufficient Support
 [numbered list: same format]
 
-### Missing Caveats
-[numbered list: Topic | Where it should be addressed | Suggested text]
+### Mechanistic Overclaiming
+[numbered list: same format]
+
+### Missing Controls
+[numbered list: Missing control | Why it matters | Where to add or address]
 
 ### Minor Language Issues
 [numbered list: same format]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 
 ---
 
-### AGENT 4 — Mathematics, Equations & Notation
+### AGENT 4 — Mathematics, Equations, Notation & Computational Methods
 
-You are a mathematical economist reviewing the formal content of an economics paper. Read all .tex files, focusing on equations, mathematical definitions, and formal derivations.
+You are a theoretical condensed matter physicist reviewing the formal and computational content of a physics paper. Read all source files.
 
 **What to check:**
 
-1. **Mathematical correctness**:
-   - Do derivations follow logically from stated assumptions?
-   - Are there algebraic or arithmetic errors?
-   - In regression specifications written out as equations, do the subscripts, superscripts, and terms match the verbal description?
+1. **Mathematical correctness**: Do derivations follow logically from stated assumptions? Are algebraic steps correct? Are approximations (linearisation, Taylor expansion, perturbation theory) explicitly stated? Are equations dimensionally consistent?
 
-2. **Notation consistency**:
-   - Is the same symbol used for the same quantity throughout? List all symbols defined in the paper and flag any reuse.
-   - Are subscripts consistent (e.g., is $i$ always an individual, $t$ always time, $g$ always a group)?
-   - Are vectors and matrices distinguished from scalars?
+2. **Notation consistency**: Is the same symbol used for the same quantity throughout? List all symbols and flag any reuse. Are subscripts consistent ($i$ for site, $k$ for momentum, $n$ for band index, $t$ for time)? Are vectors and tensors distinguished from scalars?
 
-3. **Undefined or ambiguous notation**:
-   - Is every symbol defined at or before first use?
-   - Are any symbols used without definition?
+3. **Undefined or ambiguous notation**: Every symbol defined at or before first use. Flag any symbol used without definition.
 
-4. **Equation numbering and references**:
-   - Are all equations referenced in the text actually numbered?
-   - Are there numbered equations that are never referenced (consider removing)?
-   - Are equation references correct (e.g., "equation (3)" refers to the right equation)?
+4. **Equation numbering and references**: All referenced equations numbered; no numbered equations never cited; references point to the correct equation.
 
-5. **Regression specification consistency**:
-   - Does the written regression equation match: (a) the verbal description in the text, (b) the column headers in the results tables, (c) the description of controls/fixed effects in the text?
-   - Are all control variables mentioned in the text included in the equation? Are there variables in the equation not mentioned in the text?
+5. **DFT methods completeness** — verify all of the following are stated if DFT is used:
+   - Software code (VASP, SIESTA, Quantum ESPRESSO, Wien2k, etc.)
+   - Exchange-correlation functional (GGA/PBE, LDA, HSE06, etc.)
+   - Pseudopotential type and source (PAW, norm-conserving, USPP)
+   - Basis set type and cutoff energy (plane-wave cutoff in eV or Ry)
+   - k-point mesh (Monkhorst-Pack dimensions, whether Γ-centred)
+   - vdW correction method if applicable (DFT-D2, DFT-D3, vdW-DF)
+   - Energy and force convergence thresholds
+   - Simulation cell dimensions and vacuum spacing for slab calculations
+   - Whether spin-orbit coupling (SOC) is included
 
-6. **Return/growth rate definitions**:
-   - Are annualization formulas correct? (e.g., $r = (P_1/P_0)^{1/h} - 1$ for holding period $h$)
-   - Are percentage vs. percentage point distinctions maintained?
-   - Are log approximations flagged when used?
+6. **Tight-binding model completeness** — verify if a TB model is used:
+   - All hopping parameters defined (γ₀, γ₁, γ₃, γ₄, etc.) with numerical values
+   - Lattice parameters stated
+   - Whether model is from literature or fitted to DFT; source cited
+   - Orbital basis and sublattice labelling specified
+   - Boundary conditions stated
 
-7. **Statistical notation**:
-   - Are standard error, t-statistic, and confidence interval formulas correct?
-   - Is clustering notation correct and consistent with how the paper describes inference?
+7. **Molecular dynamics completeness** — verify if MD is used:
+   - Interatomic potential / force field specified
+   - Ensemble (NVT, NPT, NVE) and thermostat/barostat stated
+   - Time step and total simulation time stated
+   - Equilibration procedure stated
 
-8. **LaTeX math formatting issues**:
-   - Missing `\left` and `\right` for large brackets/parentheses
-   - Improper use of `*` for multiplication (should use `\cdot` or `\times`)
-   - Text in math mode not wrapped in `\text{}`
-   - Alignment issues in multi-line equations
+8. **STM/STS formalism**: If the Tersoff-Hamann or Bardeen formalism is invoked, verify: (a) approximation stated explicitly, (b) tip wave function assumptions stated, (c) all terms in the tunneling current expression defined.
+
+9. **k-space conventions**: High-symmetry point labels consistent with the crystal structure and space group; Brillouin zone path correct for the stated crystal system; reciprocal lattice vectors defined if non-trivial.
+
+10. **LaTeX math formatting**:
+    - Missing `\left` / `\right` for large delimiters
+    - Multiplication written as `\cdot` or `\times`, not bare `*`
+    - Text in math mode wrapped in `\text{}`
+    - Alignment in multi-line equations
 
 **Output format:**
 ```
-## Agent 4: Mathematics, Equations & Notation
+## Agent 4: Mathematics, Equations, Notation & Computational Methods
 
 ### Mathematical Errors
-[numbered list: Equation/Location | Error description | Correction]
+[numbered list: Equation/Location | Error | Correction]
 
 ### Notation Inconsistencies
-[numbered list: Symbol | Used for X in [location], used for Y in [location] | Resolution]
+[numbered list: Symbol | Used for X at [location], used for Y at [location] | Resolution]
 
 ### Undefined Notation
-[numbered list: Symbol | First used at [location] | Where to add definition]
+[numbered list: Symbol | First used at [location] | Where to define]
 
-### Regression Specification Issues
-[numbered list: Table/Specification | Discrepancy between equation, text, and table]
+### DFT / TB / MD Methods — Missing Parameters
+[numbered list: Method | Missing parameter | Where to add]
 
 ### LaTeX Math Formatting
 [numbered list: Location | Issue | Fix]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 
 ---
 
-### AGENT 5 — Tables, Figures & Their Documentation
+### AGENT 5 — Figures, Tables & Their Documentation
 
-You are a journal production editor reviewing whether every table and figure in an economics paper is complete, self-contained, and correctly described. Read all .tex files.
+You are a journal production editor and expert condensed matter experimentalist. Review whether every figure and table is complete, self-contained, and correctly described. Read all source files and inspect all figure and table files.
+
+**For every STM/AFM topography image, check:**
+1. Scale bar present?
+2. Temperature stated (in caption or on panel)?
+3. Bias voltage $V_b$ (or $V_s$) stated?
+4. Setpoint tunneling current $I_t$ (or $I_s$) stated?
+5. Any image processing stated (e.g., "processed by line-by-line linear background subtraction along the fast scan direction")?
+6. Explicitly stated whether the data are raw or processed?
+
+**For every STS / dI/dV spectrum or map, check:**
+1. Stabilisation setpoint before opening the feedback loop ($V_\text{stab}$, $I_\text{stab}$) stated?
+2. Lock-in modulation voltage and frequency stated?
+3. Temperature stated?
+4. Explicitly stated whether spectra are raw (no smoothing) or smoothed — if smoothed, is the method stated?
+5. Explicitly stated if spectra are offset for clarity?
+6. If multiple tips or positions used: is reproducibility noted?
+
+**For every Raman spectrum or map, check:**
+1. Excitation wavelength stated?
+2. Laser power stated (or stated to be below damage threshold)?
+3. Polarisation configuration stated (parallel, crossed, or unpolarised)?
+4. Integration time stated?
+5. Normalization method stated (e.g., "normalized to the 2D+G peak at 4300 cm⁻¹")?
+6. Background subtraction stated?
+7. Temperature stated if not room temperature?
+
+**For every band structure / electronic structure figure, check:**
+1. Fermi level marked (as zero energy or labelled $E_F$)?
+2. High-symmetry k-path points labelled?
+3. Energy axis labelled with units (eV or meV)?
+4. Spin resolution indicated if SOC is included?
+5. Band character (orbital, sublattice) indicated if colour-coded?
+6. Is it DFT or TB — is this labelled in the caption?
+
+**For every phase diagram or spatial map, check:**
+1. Both axes labelled with units?
+2. Phase boundaries and phase labels clear?
+3. Colour scale bar present and labelled with units?
+4. Calculated boundaries and experimental data points distinguished?
+
+**For every figure (general):**
+1. Caption self-contained — can a reader understand the figure without reading the body text?
+2. All panels labelled (a, b, c... or A, B, C...)?
+3. All panels referenced at least once in the main text?
+4. Legend present if multiple series or colours?
+5. Axis labels with units on all axes?
 
 **For every table, check:**
-
-1. **Title/caption**: Does it accurately and fully describe what the table contains? Can a reader understand the table without reading the body of the paper?
-
-2. **Column headers**: Are they clear, unambiguous, and complete? Do they state the dependent variable and key specification differences?
-
-3. **Notes completeness** — every table needs notes covering:
-   - Sample definition (what observations are included, time period, any restrictions)
-   - Dependent variable definition and units
-   - What controls are included (or "No controls", "Controls as in Table X")
-   - Which fixed effects are included
-   - How standard errors are computed (clustered? at what level?)
-   - Definition of significance stars (e.g., *** p<0.01, ** p<0.05, * p<0.10)
-   - Whether the table reports standard errors, t-statistics, or something else
-
-4. **Standard errors**: Are they reported in every column? Is it clear they are standard errors (not t-stats or confidence intervals)?
-
-5. **Observations**: Is N reported in every column? If columns use different samples, is this clear?
-
-6. **Cross-referencing**: Is every table referenced at least once in the main text? Are there tables defined but never cited?
-
-7. **Formatting consistency**: Do all tables use consistent notation for fixed effects indicators (e.g., "Yes/No" vs checkmarks vs "✓")?
-
-**For every figure, check:**
-
-1. **Title/caption**: Does it describe what is shown? Is it self-contained?
-
-2. **Axis labels**: Are both axes labeled? Are units included?
-
-3. **Legend**: If multiple series or colors, is there a legend?
-
-4. **Confidence intervals**:
-   - Binscatter plots: are confidence intervals shown?
-   - Coefficient plots: are confidence intervals shown?
-   - Event study plots: are confidence intervals shown?
-
-5. **Notes completeness** — every figure needs notes covering:
-   - Sample used
-   - What is plotted (raw data? residuals after controls?)
-   - For binscatters: number of bins, whether controls are absorbed, what the dots represent
-   - For coefficient plots: what the point estimates and intervals represent
-   - Data source
-
-6. **Cross-referencing**: Is every figure referenced in the main text? Any figures defined but never cited?
+1. Caption accurately describes the content?
+2. Column headers include units?
+3. Uncertainty notation consistent (± or parentheses for last digit of value)?
+4. Source of values stated (experimental, DFT, literature)?
+5. Table referenced in the main text?
 
 **Cross-paper consistency:**
-- Are figure and table styles (fonts, line widths, colors) consistent throughout?
-- Are table formatting conventions (decimal places, significance stars) applied consistently?
+- Figure styles (fonts, line widths, colour schemes) consistent throughout?
+- Scale bars in the same units across comparable figures?
+- Energy axes in the same units (meV or eV) across comparable figures?
 
 **Output format:**
 ```
-## Agent 5: Tables, Figures & Documentation
+## Agent 5: Figures, Tables & Documentation
 
-### Tables with Missing or Incomplete Notes
-[organized by table number: Table X | Missing element | Suggested addition]
+### STM/STS Figures with Missing Information
+[organized by figure: Figure X panel Y | Missing element | Suggested addition]
 
-### Figures with Missing or Incomplete Notes
-[organized by figure number: Figure X | Missing element | Suggested addition]
+### Raman Figures with Missing Information
+[organized by figure: Figure X | Missing element | Suggested addition]
+
+### Theory / Calculation Figures with Missing Information
+[organized by figure: Figure X | Missing element | Suggested addition]
 
 ### Cross-Reference Issues
-[list: Element | Issue (unreferenced? wrong reference? missing?)]
+[list: Element | Issue]
 
 ### Formatting Inconsistencies
-[list: Issue | Where it occurs | Standardization recommendation]
+[list: Issue | Where | Recommendation]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 Figure files: [LIST FIGURE PATHS]
 Table files: [LIST TABLE PATHS]
 
 ---
 
-### AGENT 6 — Contribution Evaluation (Adversarial Top-5 Referee)
+### AGENT 6 — Contribution Evaluation (Adversarial Referee)
 
-You are a demanding associate editor. Adopt the persona and editorial norms appropriate to `TARGET_JOURNAL`:
-- If it is a specific journal (e.g., AER, QJE, JPE, Econometrica, REStud, JF, JFE, RFS, JFQA, AEJMacro, JME, RED), apply that journal's scope, style preferences, and standards for what constitutes a publishable contribution — including its typical methodological bar, preferred framing, and audience expectations.
-- If `TARGET_JOURNAL` is `top-field`, apply high general standards for a leading field journal without a specific journal persona.
+You are a demanding referee. The target journal is TARGET_JOURNAL (Tier TARGET_TIER).
 
-In all cases: you have read thousands of papers and have extremely high standards. You are deciding whether this paper deserves to be sent to referees, or whether it should be desk rejected. You are not hostile, but you are exacting, specific, and rigorous. You will read the complete paper and produce a structured evaluation.
+Adopt the following persona based on TARGET_TIER:
 
-Read all .tex files completely and thoroughly.
+**Tier 1** (Nature, Science, NatMat, NatPhys, NatNanotech, PRL, NatChem, NatEner, NatRevPhys): You are an associate editor at a flagship journal. Your threshold question is: does this result change how the community thinks about this material, phenomenon, or class of systems? You require a clear singular message, a compelling story, and results that are technically solid and broadly relevant beyond the immediate subfield. You will desk-reject papers where the advance is incremental, the message is muddled, or the evidence is incomplete.
 
-**Your evaluation has 7 parts:**
+**Tier 2** (PRB, PRX, PRRes, npjQM, npj2D, npjComp, CommPhys, CommMater, SciPost, SciAdv, PNAS, NatComm): You are a rigorous referee who values technical correctness and completeness. You require that all experimental parameters are reported, all computational methods are fully specified, and the interpretation is supported by multiple lines of evidence. You will require major revisions if controls are missing or if theoretical and experimental components are not quantitatively consistent.
+
+**Tier 3** (NanoLett, ACSNano, Small, AdvMater, AdvSci, AdvFuncMater, AdvPhysRes, SciRep, Carbon, NatSciRev, ACSEnLett): You are a referee who values clear technical novelty and well-executed experiments. You require that the paper demonstrates a clear advance over existing literature, that data quality is high, and that results are placed in proper context. You will ask for clearer differentiation from prior work and additional supporting data if novelty is not immediately apparent.
+
+**top-field**: Apply Tier 1 standards without a specific journal persona.
+
+In all cases: you have read thousands of condensed matter physics papers and have extremely high standards. Read the complete paper thoroughly.
+
+**Your evaluation has 6 parts:**
 
 **Part 1 — The Central Contribution**
+- State in one sentence what the paper claims to contribute.
+- Is this finding genuinely new, or a replication in a new system?
+- What is the closest prior paper? What does this paper add beyond it?
+- Does this answer a question the community disagrees about or needs answered?
+- Does this change how physicists think about this material or phenomenon?
+- Rate: [Transformative | Significant | Incremental | Insufficient for TARGET_JOURNAL]
+- Justify in 2–3 sentences.
 
-State in one sentence what the paper claims to contribute. Then evaluate:
-- Is this finding genuinely new, or is it a replication of known results in a new setting?
-- What is the closest prior paper? What does this paper add beyond that paper?
-- Does the paper answer a question that reasonable economists disagree about, or that the profession needs answered?
-- Does this finding change how economists think about the paper's central topic?
-- Rate the contribution: [Transformative | Significant | Incremental | Insufficient for target journal]
-- Justify your rating in 2-3 sentences.
-
-**Part 2 — Identification and Credibility**
-
-- What variation does the paper use to identify its main result?
-- Is this variation plausibly exogenous? What are the main threats?
-- Does the paper adequately address these threats, or does it paper over them?
-- Is the main finding causal, correlational, or descriptive? Does the paper claim the right thing?
-- Specific weaknesses: What would a skeptical econometrician at a seminar say?
-- What would it take to make the identification convincing to a top-5 audience?
+**Part 2 — Experimental and Theoretical Credibility**
+- What is the primary evidence for the central claim?
+- Are the key experimental observations reproducible (multiple tips, multiple sample positions, multiple flakes or crystals)?
+- Is the theoretical support (DFT, tight-binding, analytical model) quantitatively consistent with experiment, or only qualitative?
+- What are the main alternative explanations for the observations that the paper does not address?
+- What would a skeptical experimentalist ask at a group seminar?
+- What would it take to make the result convincing to a Tier 1 audience?
 
 **Part 3 — Analyses: Required and Suggested**
 
-**Required analyses** (3–5 you would require before recommending acceptance — their absence is a blocker):
-- Robustness checks not performed
-- Alternative explanations not ruled out
-- Placebo or falsification tests that are missing
-For each: state what the analysis is, why its absence undermines the paper's credibility, and what a positive result would do for your view.
+**Required analyses** (3–5 that are blockers — their absence prevents acceptance):
+For each: state the analysis, why its absence undermines the paper's credibility, and what a positive result would do.
 
 **Suggested analyses** (3–5 that would substantially strengthen the paper but are not hard requirements):
-- Mechanism tests that are missing
-- Subgroup analyses that would enrich the findings
-- Extensions that would broaden the contribution
-For each: describe the analysis precisely, explain why it matters, and assess whether it is feasible given the data sources described in the paper.
+For each: describe precisely, explain why it matters, assess feasibility given the resources described in the paper.
 
 **Part 4 — Literature Positioning**
-
-- Does the paper cite the right papers? Are there obvious relevant papers missing?
-- Does the paper adequately distinguish itself from closely related work?
-- Is the paper over-citing minor papers and under-citing major ones?
-- Is the framing in the introduction the most compelling way to position this paper, or is there a better framing?
+- Are the right papers cited? Are there obvious omissions?
+- Does the paper clearly distinguish itself from the closest prior work?
+- Is the introduction framing the most compelling positioning, or is there a better angle?
+- Is the paper overclaiming novelty in areas well-covered by prior literature?
 
 **Part 5 — Journal Fit and Recommendation**
-
-- If `TARGET_JOURNAL` is a specific journal: Is this paper a strong fit for `TARGET_JOURNAL` given its scope, methods, and level of contribution? Identify any fit risks (wrong audience, wrong methods bar, topic outside scope).
-- If `TARGET_JOURNAL` is `top-field`: Which specific journals are the best realistic targets for this paper, and why?
-- What is your preliminary recommendation: [Send to referees | Revise before sending to referees | Desk reject]
-- What would it take, concretely, to reach the standard required by the target journal?
-- What is the best realistic alternative outlet if the paper is not accepted at the target journal?
+- Is this paper a strong fit for TARGET_JOURNAL given its scope and contribution level?
+- Preliminary recommendation: [Send to referees | Revise before sending | Desk reject]
+- What concretely would it take to reach the standard of TARGET_JOURNAL?
+- Best realistic alternative outlet if not accepted at TARGET_JOURNAL?
 
 **Part 6 — Pointed Questions to the Authors**
-
-Write 4–7 specific, pointed questions that you would send to the authors as a referee. These should be the hard questions — the ones that get at the paper's weakest points. Frame them exactly as a referee would in a report.
+Write 4–7 specific questions that get at the paper's weakest points, framed exactly as a referee would write them in a report.
 
 **Output format:**
 ```
@@ -402,33 +437,33 @@ Write 4–7 specific, pointed questions that you would send to the authors as a 
 ### Part 1 — Central Contribution
 [assessment + rating]
 
-### Part 2 — Identification and Credibility
+### Part 2 — Experimental and Theoretical Credibility
 [assessment]
 
 ### Part 3 — Analyses: Required and Suggested
 **Required:**
-[numbered list of 3-5 items]
+[numbered list of 3–5]
 
 **Suggested:**
-[numbered list of 3-5 items]
+[numbered list of 3–5]
 
 ### Part 4 — Literature Positioning
 [assessment]
 
 ### Part 5 — Journal Fit and Recommendation
-[recommendation + path to improvement]
+[recommendation + path forward]
 
 ### Part 6 — Questions to the Authors
-[numbered list of 4–7 questions, formatted as a referee would write them]
+[numbered list of 4–7 questions]
 ```
 
-The .tex files to review are: [LIST ALL TEX FILE PATHS HERE]
+The source files to review are: [LIST ALL SOURCE FILE PATHS HERE]
 
 ---
 
 ## Phase 3: Consolidate and Save
 
-After all 6 agents return their results, consolidate them into a single structured report. Save the report to:
+After all 6 agents return results, consolidate into a single structured report saved to:
 
 `PRE_SUBMISSION_REVIEW_[YYYY-MM-DD].md`
 
@@ -442,14 +477,14 @@ where `[YYYY-MM-DD]` is today's date.
 **Paper**: [Title]
 **Authors**: [Authors]
 **Date**: [Today's date]
-**Review Standard**: [TARGET_JOURNAL — if top-field, write "Leading Field Journal"; otherwise write the specific journal name]
+**Source format**: [LaTeX | PDF]
+**Review Standard**: [TARGET_JOURNAL — if top-field write "Tier 1 General Standards"; otherwise write the journal name and tier]
 
 ---
 
 ## Overall Assessment
 
-[3–4 sentences: What the paper does, its principal strength, and the single most critical issue
-that must be resolved before submission.]
+[3–4 sentences: what the paper does, its principal strength, and the single most critical issue that must be resolved before submission.]
 
 **Preliminary Recommendation**: [Send to referees as-is | Revise before submitting | Substantial revision required]
 
@@ -457,7 +492,7 @@ that must be resolved before submission.]
 
 ## 1. Spelling, Grammar & Style
 
-[Agent 1 output, preserving its structure]
+[Agent 1 output]
 
 ---
 
@@ -467,19 +502,19 @@ that must be resolved before submission.]
 
 ---
 
-## 3. Unsupported Claims & Identification Integrity
+## 3. Unsupported Claims & Methodological Integrity
 
 [Agent 3 output]
 
 ---
 
-## 4. Mathematics, Equations & Notation
+## 4. Mathematics, Equations, Notation & Computational Methods
 
 [Agent 4 output]
 
 ---
 
-## 5. Tables, Figures & Documentation
+## 5. Figures, Tables & Documentation
 
 [Agent 5 output]
 
@@ -493,9 +528,9 @@ that must be resolved before submission.]
 
 ## Priority Action Items
 
-The following issues require attention before submission, ordered by priority. When ranking across agents, apply this triage hierarchy: identification and credibility failures (Agent 3, Agent 6 Part 2) > missing required analyses (Agent 6 Part 3) > internal inconsistencies (Agent 2) > tables/figures documentation (Agent 5) > mathematical errors (Agent 4) > style and grammar (Agent 1). Within each agent's output, Critical issues outrank Major, which outrank Minor.
+The following issues require attention before submission, ordered by priority. Triage hierarchy: missing experimental controls or unsupported topological claims (Agent 3) > credibility and reproducibility failures (Agent 6 Part 2) > missing required analyses (Agent 6 Part 3) > internal parameter inconsistencies (Agent 2) > figure and table documentation gaps (Agent 5) > mathematical or methods incompleteness (Agent 4) > style and grammar (Agent 1). Within each agent, Critical outranks Major, which outranks Minor.
 
-**CRITICAL** (must fix — these could cause desk rejection or major referee objections):
+**CRITICAL** (must fix — these could cause desk rejection or fundamental credibility problems):
 1. ...
 2. ...
 3. ...

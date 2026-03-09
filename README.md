@@ -1,11 +1,12 @@
 # Using AI to get feedback on your research
 
-A collection of [Claude Code](https://claude.ai/code) skills for academic economics paper review. This tool was developed by [Claes Bäckman](https://claesbackman.com). 
+A collection of [Claude Code](https://claude.ai/code) skills for condensed matter physics paper review, adapted for STM, Raman spectroscopy, and computational work (DFT, tight-binding, molecular dynamics). Originally developed by [Claes Bäckman](https://claesbackman.com) for economics; adapted for condensed matter physics by Péter Nemes-Incze.
+
 ## Skills
 
 ### `review-paper` — Pre-Submission Referee Report
 
-Runs a rigorous pre-submission review of an academic paper, simulating the scrutiny of a specific journal's editorial board. Six specialized review agents run in parallel and their findings are consolidated into a single structured report.
+Runs a rigorous pre-submission review of an academic paper. Six specialized review agents run in parallel and their findings are consolidated into a single structured report.
 
 **What it reviews:**
 
@@ -13,9 +14,9 @@ Runs a rigorous pre-submission review of an academic paper, simulating the scrut
 |---|---|
 | 1 | Spelling, grammar, and academic style |
 | 2 | Internal consistency and cross-reference verification |
-| 3 | Unsupported claims and identification integrity |
-| 4 | Mathematics, equations, and notation |
-| 5 | Tables, figures, and their documentation |
+| 3 | Unsupported claims and methodological integrity |
+| 4 | Mathematics, equations, notation, and computational methods |
+| 5 | Figures, tables, and their documentation |
 | 6 | Contribution evaluation (adversarial journal-specific referee) |
 
 **Usage:**
@@ -23,37 +24,48 @@ Runs a rigorous pre-submission review of an academic paper, simulating the scrut
 From within the paper's directory, run:
 
 ```
-/review-paper                        # auto-detect paper, generic standards
-/review-paper QJE                    # QJE-specific referee persona
-/review-paper JF path/to/main.tex    # Journal of Finance persona + explicit file path
+/review-paper                        # auto-detect paper, Tier 1 general standards
+/review-paper PRB                    # PRB referee persona
+/review-paper NatPhys path/to/main.tex    # Nature Physics persona + explicit file path
 ```
 
 Recognized journal names (case-insensitive):
 
-| Category | Journals |
+| Tier | Journals |
 |---|---|
-| Top-5 economics | `AER`, `QJE`, `JPE`, `Econometrica`, `REStud` |
-| Finance | `JF`, `JFE`, `RFS`, `JFQA` |
-| Macro | `AEJMacro`, `JME`, `RED` |
+| Tier 1 — High impact | `Nature`, `Science`, `NatMat`, `NatPhys`, `NatNanotech`, `PRL`, `NatChem`, `NatEner`, `NatRevPhys` |
+| Tier 2 — APS / npj / broad | `PRB`, `PRX`, `PRRes`, `npjQM`, `npj2D`, `npjComp`, `CommPhys`, `CommMater`, `SciPost`, `SciAdv`, `PNAS`, `NatComm` |
+| Tier 3 — ACS / Wiley / Elsevier | `NanoLett`, `ACSNano`, `Small`, `AdvMater`, `AdvSci`, `AdvFuncMater`, `AdvPhysRes`, `SciRep`, `Carbon`, `NatSciRev`, `ACSEnLett` |
 
-If no journal is specified, the review applies high general standards without a specific journal persona. The file path is also optional — the skill auto-detects the main `.tex` file if not provided.
+If no journal is specified, Tier 1 general standards are applied. The file path is optional — the skill auto-detects the main `.tex` file if not provided.
 
-The consolidated report is saved to `PRE_SUBMISSION_REVIEW_[YYYY-MM-DD].md` in the current directory. If you prefer a specific folder, edit "review-paper.md". 
+The skill also works with PDF input: if no `.tex` files are found, it reads the PDF directly and proceeds with all six agents (cross-reference checking will be approximate).
+
+The consolidated report is saved to `PRE_SUBMISSION_REVIEW_[YYYY-MM-DD].md` in the current directory.
+
+**Domain-specific checks:**
+
+The agents are calibrated for condensed matter experiment and theory. Highlights:
+
+- **Agent 3** checks for tip-artifact vs intrinsic feature attribution in STM/STS, topological invariant computation (not just band gap closure arguments), Raman peak assignment without polarimetry, "intrinsic" surface property claims on potentially contaminated vdW materials, and DFT functional sensitivity.
+- **Agent 4** verifies completeness of DFT parameters (code, functional, pseudopotential, k-mesh, cutoff, vdW correction, SOC, convergence criteria), tight-binding parameter definitions, and MD force field and ensemble settings.
+- **Agent 5** has separate checklists for STM topography images (scale bar, T, V_b, I_t, processing), STS/dI/dV spectra (stabilisation setpoint, lock-in parameters, raw vs smoothed), Raman figures (excitation wavelength, polarisation, integration time, normalisation), and band structure plots (Fermi level, k-path labels, spin resolution).
+- **Agent 6** applies a three-tier referee persona: Tier 1 asks whether the result changes how the community thinks about the material; Tier 2 demands quantitative theory-experiment consistency and complete methods reporting; Tier 3 evaluates novelty against existing literature.
 
 **Customization:**
 
-The skill is designed to be extended in two ways.
+*Adding journals:* Open the skill file and add the abbreviation to the recognized names list in Phase 1, assigning it a tier. Agent 6 will adopt the appropriate persona automatically.
 
-*Adding journals or fields:* Open the skill file and add your journal's abbreviation to the recognized names list in Phase 1. Agent 6 will automatically adopt the appropriate editorial persona based on its training knowledge of that journal. The same approach works for other disciplines — sociology, political science, psychology — by specifying the target journal when invoking the skill.
+*Adding project-specific context:* Put paper-specific instructions in a `CLAUDE.md` file in your project directory — Claude Code reads this automatically and all agents will have access to it when reviewing your paper.
 
-*Adding project-specific context:* You can ask Claude to inject context about your specific paper before running the skill. For example: "Before running /review-paper, note that this paper uses a regression discontinuity design and the main identification concern is sorting around the threshold." Claude will carry that context into the review. A more durable approach is to put project-specific instructions in a `CLAUDE.md` file in your project directory — Claude Code reads this automatically and the agents will have access to it when reviewing your paper.
+*Changing output path:* Edit the save path in Phase 3 of `review-paper.md`.
 
-*Changing folder structure:* In the baseline specification of this tool, Claude will search through folders looking for tables and figures. You can simply put in your own file paths to make it slightly easier. If you prefer to get the feedback saved somewhere else, you can also change the path for where the final report is saved. 
+*Changing figure/table search paths:* Edit the Glob patterns in Phase 1 steps 5–6.
 
 **Requirements:**
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with access to the `general-purpose` subagent (i.e., the Agent tool must be available).
-- The paper must be in LaTeX format. The skill reads `.tex` files and optionally inspects figure and table files.
+- Papers in LaTeX format (preferred) or PDF.
 
 **Installation:**
 
@@ -67,4 +79,4 @@ or into a project-level skills directory (`.claude/commands/review-paper.md` rel
 
 ## License
 
-MIT — free to use, adapt, and share. 
+MIT — free to use, adapt, and share.
